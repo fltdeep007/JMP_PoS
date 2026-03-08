@@ -110,6 +110,22 @@ const toId = (doc) => {
   return obj;
 };
 
+// Helper: normalise a single bill item (handles old bills with `name`/`qty` fields)
+const normalizeItem = (item) => ({
+  item_id:   item.item_id,
+  item_name: item.item_name || item.name || 'Unknown',
+  quantity:  item.quantity  ?? item.qty  ?? 0,
+  price:     item.price     ?? 0,
+  subtotal:  item.subtotal  ?? ((item.quantity ?? item.qty ?? 0) * (item.price ?? 0)),
+});
+
+// Helper: convert a Bill doc to plain JSON with normalised items
+const billToJson = (doc) => {
+  const obj = toId(doc);
+  if (Array.isArray(obj.items)) obj.items = obj.items.map(normalizeItem);
+  return obj;
+};
+
 // ─── Auth Routes ─────────────────────────────────────────────────────────────
 app.post('/api/login', async (req, res) => {
   try {
@@ -348,7 +364,7 @@ app.post('/api/bills', authMiddleware, async (req, res) => {
     });
 
     const bill = await Bill.findById(billId).populate('creditor_id', 'name').populate('created_by', 'username');
-    res.status(201).json({ ...toId(bill), id: billId });
+    res.status(201).json({ ...billToJson(bill), id: billId });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message || 'Server error' });
@@ -367,7 +383,7 @@ app.get('/api/bills/today', authMiddleware, async (req, res) => {
       .populate('creditor_id', 'name')
       .populate('created_by', 'username')
       .sort({ created_at: -1 });
-    res.json(bills.map(toId));
+    res.json(bills.map(billToJson));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -381,7 +397,7 @@ app.get('/api/bills/refunded', authMiddleware, async (req, res) => {
       .populate('created_by', 'username')
       .populate('refunded_by', 'username')
       .sort({ refunded_at: -1 });
-    res.json(bills.map(toId));
+    res.json(bills.map(billToJson));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -405,7 +421,7 @@ app.get('/api/bills', authMiddleware, async (req, res) => {
       .populate('creditor_id', 'name')
       .populate('created_by', 'username')
       .sort({ created_at: -1 });
-    res.json(bills.map(toId));
+    res.json(bills.map(billToJson));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -447,7 +463,7 @@ app.put('/api/bills/:id/refund', authMiddleware, async (req, res) => {
       .populate('creditor_id', 'name')
       .populate('created_by', 'username')
       .populate('refunded_by', 'username');
-    res.json(toId(updated));
+    res.json(billToJson(updated));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message || 'Server error' });
@@ -499,7 +515,7 @@ app.post('/api/refunds', authMiddleware, async (req, res) => {
     const refundBill = await Bill.findById(refundBillId)
       .populate('creditor_id', 'name')
       .populate('created_by', 'username');
-    res.status(201).json(toId(refundBill));
+    res.status(201).json(billToJson(refundBill));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message || 'Server error' });
@@ -532,7 +548,7 @@ app.get('/api/receipts/:billId/preview', authMiddleware, async (req, res) => {
       .populate('creditor_id', 'name mobile balance')
       .populate('created_by', 'username');
     if (!bill) return res.status(404).json({ error: 'Bill not found' });
-    res.json(toId(bill));
+    res.json(billToJson(bill));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -559,7 +575,11 @@ app.get('/api/receipts/:billId/download', authMiddleware, async (req, res) => {
     doc.moveDown();
     doc.text('Items:', { underline: true });
     bill.items.forEach((item) => {
-      doc.text(`  ${item.item_name} x${item.quantity}  @ ${item.price}  = ${item.subtotal}`);
+      const name     = item.item_name || item.name     || 'Unknown';
+      const qty      = item.quantity  ?? item.qty      ?? 0;
+      const price    = item.price     ?? 0;
+      const subtotal = item.subtotal  ?? (qty * price);
+      doc.text(`  ${name} x${qty}  @ ₹${price}  = ₹${subtotal}`);
     });
     doc.moveDown();
     doc.fontSize(14).text(`Total: ${bill.total}`, { bold: true });
@@ -580,7 +600,7 @@ app.post('/api/receipts/:billId/print', authMiddleware, async (req, res) => {
 
     await DuplicateReceipt.create({ bill_id: bill._id, printed_by: req.user.id });
 
-    res.json({ message: 'Print job sent', bill: toId(bill) });
+    res.json({ message: 'Print job sent', bill: billToJson(bill) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -600,7 +620,7 @@ app.get('/api/receipts', authMiddleware, async (req, res) => {
         .limit(limit),
       Bill.countDocuments(),
     ]);
-    res.json({ bills: bills.map(toId), total });
+    res.json({ bills: bills.map(billToJson), total });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -635,6 +655,58 @@ app.get('/api/logs/login', authMiddleware, async (req, res) => {
   }
 });
 
+// ─── Refund PDF download ──────────────────────────────────────────────────────
+app.get('/api/refunds/:id/download', authMiddleware, async (req, res) => {
+  try {
+    const bill = await Bill.findById(req.params.id)
+      .populate('creditor_id', 'name mobile balance')
+      .populate('created_by', 'username');
+    if (!bill) return res.status(404).json({ error: 'Refund not found' });
+
+    const doc = new PDFDocument({ margin: 50 });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=refund-${bill._id}.pdf`);
+    doc.pipe(res);
+
+    doc.fontSize(20).text('REFUND RECEIPT', { align: 'center' });
+    doc.moveDown(0.5);
+    doc.fontSize(12).text(`Refund ID : ${bill._id}`);
+    doc.text(`Date      : ${new Date(bill.created_at).toLocaleString('en-IN')}`);
+    doc.text(`Creditor  : ${bill.creditor_id?.name || 'N/A'}`);
+    doc.text(`Mobile    : ${bill.creditor_id?.mobile || 'N/A'}`);
+    doc.text(`Processed by: ${bill.created_by?.username || 'N/A'}`);
+    doc.moveDown();
+    doc.text('Refunded Items:', { underline: true });
+    bill.items.forEach((item) => {
+      const name     = item.item_name || item.name     || 'Unknown';
+      const qty      = item.quantity  ?? item.qty      ?? 0;
+      const price    = item.price     ?? 0;
+      const subtotal = item.subtotal  ?? (qty * price);
+      doc.text(`  ${name}  ${qty} x ₹${price}  =  −₹${subtotal}`);
+    });
+    doc.moveDown();
+    doc.fontSize(14).text(`TOTAL REFUNDED: −₹${bill.total}`, { bold: true });
+    doc.end();
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/refunds/:id/print', authMiddleware, async (req, res) => {
+  try {
+    const bill = await Bill.findById(req.params.id)
+      .populate('creditor_id', 'name mobile')
+      .populate('created_by', 'username');
+    if (!bill) return res.status(404).json({ error: 'Refund not found' });
+    await DuplicateReceipt.create({ bill_id: bill._id, printed_by: req.user.id });
+    res.json({ message: 'Refund print job sent', bill: billToJson(bill) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // ─── Reports ──────────────────────────────────────────────────────────────────
 app.get('/api/reports/credit', authMiddleware, async (req, res) => {
   try {
@@ -651,8 +723,9 @@ app.get('/api/reports/credit', authMiddleware, async (req, res) => {
     }
     const bills = await Bill.find(filter)
       .populate('creditor_id', 'name mobile balance')
+      .populate('created_by', 'username')
       .sort({ created_at: -1 });
-    res.json(bills.map(toId));
+    res.json(bills.map(billToJson));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });

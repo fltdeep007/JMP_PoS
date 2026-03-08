@@ -38,20 +38,17 @@ interface ReceiptData {
 }
 
 interface Receipt {
-  receipt_id: number;
-  creditor_name: string;
+  id: string;
+  creditor_id: { name: string };
   total: number;
-  created_by: string;
+  created_by: { username: string };
   created_at: string;
   refunded: boolean;
 }
 
 interface ReceiptsResponse {
-  total_count: number;
-  limit: number;
-  offset: number;
-  has_more: boolean;
-  receipts: Receipt[];
+  total: number;
+  bills: Receipt[];
 }
 
 const Billing = () => {
@@ -96,12 +93,12 @@ const Billing = () => {
     try {
       const data = await api.getReceipts(offset, 10);
       if (offset === 0) {
-        setReceipts(data.receipts);
+        setReceipts(data.bills || []);
       } else {
-        setReceipts((prev) => [...prev, ...data.receipts]);
+        setReceipts((prev) => [...prev, ...(data.bills || [])]);
       }
       setReceiptsOffset(offset);
-      setReceiptsHasMore(data.has_more);
+      setReceiptsHasMore((offset + 10) < data.total);
     } catch (error) {
       toast({
         title: 'Error',
@@ -133,7 +130,7 @@ const Billing = () => {
     }
   };
 
-  const handlePrintDuplicate = (receiptId: number) => {
+  const handlePrintDuplicate = (receiptId: string) => {
     toast({
       title: 'Coming Soon',
       description: 'Print duplicate feature will be implemented soon',
@@ -198,7 +195,22 @@ const Billing = () => {
     
     try {
       const data = await api.previewReceipt(lastBillId);
-      setReceiptData(data);
+      // Transform raw MongoDB document → ReceiptData shape
+      setReceiptData({
+        receipt_no: data.id,
+        date: data.created_at ? new Date(data.created_at).toLocaleString('en-IN') : '-',
+        user: data.created_by?.username || '-',
+        creditor: data.creditor_id?.name || '-',
+        total: data.total,
+        item_count: data.items?.length || 0,
+        items: (data.items || []).map((item: any) => ({
+          item_name: item.item_name || item.name || '-',
+          quantity: String(item.quantity ?? item.qty ?? 0),
+          price: String(item.price || 0),
+          subtotal: String(item.subtotal ?? ((item.quantity ?? item.qty ?? 0) * (item.price || 0))),
+        })),
+        formatted: '',
+      });
       setShowPreview(true);
     } catch (error: any) {
       toast({
@@ -282,16 +294,22 @@ const Billing = () => {
     try {
       const response = await api.createBill({
         creditor_id: selectedCreditor.id,
-        items: billItems,
+        items: billItems.map(item => ({
+          item_id: item.id,
+          item_name: item.name,
+          quantity: item.qty,
+          price: item.price,
+          subtotal: parseFloat((item.qty * item.price).toFixed(2)),
+        })),
         total: calculateTotal(),
         is_duplicate: isDuplicate,
       });
 
-      setLastBillId(String(response.billId));
+      setLastBillId(String(response.id));
       
       toast({
         title: 'Success',
-        description: `Bill #${response.billId} created successfully. You can now preview, download, or print the receipt.`,
+        description: `Bill #${response.id} created successfully. You can now preview, download, or print the receipt.`,
       });
 
       // Don't reset form automatically - let user see what they created
@@ -595,12 +613,12 @@ const Billing = () => {
                   </TableHeader>
                   <TableBody>
                     {receipts.map((receipt) => (
-                      <TableRow key={receipt.receipt_id}>
-                        <TableCell className="font-medium">#{receipt.receipt_id}</TableCell>
-                        <TableCell>{receipt.creditor_name}</TableCell>
-                        <TableCell>₹{receipt.total.toFixed(2)}</TableCell>
-                        <TableCell>{receipt.created_at}</TableCell>
-                        <TableCell>{receipt.created_by}</TableCell>
+                      <TableRow key={receipt.id}>
+                        <TableCell className="font-medium">#{receipt.id}</TableCell>
+                        <TableCell>{receipt.creditor_id?.name}</TableCell>
+                        <TableCell>₹{Number(receipt.total || 0).toFixed(2)}</TableCell>
+                        <TableCell>{receipt.created_at ? new Date(receipt.created_at).toLocaleString('en-IN') : '-'}</TableCell>
+                        <TableCell>{receipt.created_by?.username}</TableCell>
                         <TableCell>
                           {receipt.refunded ? (
                             <Badge variant="destructive">Refunded</Badge>
@@ -613,14 +631,14 @@ const Billing = () => {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handleDownloadReceiptById(receipt.receipt_id)}
+                              onClick={() => handleDownloadReceiptById(receipt.id)}
                             >
                               <Download className="h-4 w-4" />
                             </Button>
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handlePrintDuplicate(receipt.receipt_id)}
+                              onClick={() => handlePrintDuplicate(receipt.id)}
                             >
                               <Printer className="h-4 w-4" />
                             </Button>

@@ -7,30 +7,24 @@ import { api } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, RefreshCw } from 'lucide-react';
 
-type BillSummary = {
-  bill_id: number;
+// MongoDB API response shape
+type Bill = {
+  id: string;
   created_at: string;
   total: number;
-  creditor_name: string;
-  creditor_mobile: string;
-  created_by: string;
-};
-
-type RefundedBill = {
-  bill_id: number;
-  original_date: string;
-  refunded_at: string;
-  refund_amount: number;
-  creditor_name: string;
-  creditor_mobile: string;
-  refunded_by: string;
+  creditor_id: { name: string; mobile?: string };
+  created_by: { username: string };
+  refunded: boolean;
+  refunded_at?: string;
+  refunded_amount?: number;
+  refunded_by?: { username: string };
 };
 
 const Receipts = () => {
-  const [bills, setBills] = useState<BillSummary[]>([]);
-  const [refundedBills, setRefundedBills] = useState<RefundedBill[]>([]);
+  const [bills, setBills] = useState<Bill[]>([]);
+  const [refundedBills, setRefundedBills] = useState<Bill[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refunding, setRefunding] = useState<number | null>(null);
+  const [refunding, setRefunding] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -45,7 +39,7 @@ const Receipts = () => {
         api.getRefundedBills(),
       ]);
       setBills(allBills);
-      setRefundedBills(refunded.refunded_bills || []);
+      setRefundedBills(Array.isArray(refunded) ? refunded : []);
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -57,7 +51,7 @@ const Receipts = () => {
     }
   };
 
-  const handleRefund = async (billId: number) => {
+  const handleRefund = async (billId: string) => {
     setRefunding(billId);
     try {
       await api.refundBill(billId);
@@ -77,7 +71,8 @@ const Receipts = () => {
     }
   };
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return '-';
     return new Date(dateString).toLocaleString('en-IN', {
       day: '2-digit',
       month: '2-digit',
@@ -111,7 +106,7 @@ const Receipts = () => {
           </Button>
         </div>
 
-        {/* All Receipts */}
+        {/* All Active Receipts */}
         <Card>
           <CardHeader>
             <CardTitle>All Receipts</CardTitle>
@@ -139,21 +134,21 @@ const Receipts = () => {
                     </TableRow>
                   ) : (
                     bills.map((bill) => (
-                      <TableRow key={bill.bill_id}>
-                        <TableCell className="font-medium">#{bill.bill_id}</TableCell>
+                      <TableRow key={bill.id}>
+                        <TableCell className="font-medium">#{bill.id}</TableCell>
                         <TableCell>{formatDate(bill.created_at)}</TableCell>
-                        <TableCell>{bill.creditor_name}</TableCell>
-                        <TableCell>{bill.creditor_mobile}</TableCell>
-                        <TableCell>₹{parseFloat(bill.total.toString()).toFixed(2)}</TableCell>
-                        <TableCell>{bill.created_by}</TableCell>
+                        <TableCell>{bill.creditor_id?.name}</TableCell>
+                        <TableCell>{bill.creditor_id?.mobile || '-'}</TableCell>
+                        <TableCell>₹{Number(bill.total || 0).toFixed(2)}</TableCell>
+                        <TableCell>{bill.created_by?.username}</TableCell>
                         <TableCell>
                           <Button
-                            onClick={() => handleRefund(bill.bill_id)}
-                            disabled={refunding === bill.bill_id}
+                            onClick={() => handleRefund(bill.id)}
+                            disabled={refunding === bill.id}
                             variant="destructive"
                             size="sm"
                           >
-                            {refunding === bill.bill_id ? (
+                            {refunding === bill.id ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
                               'Refund'
@@ -197,16 +192,16 @@ const Receipts = () => {
                     </TableRow>
                   ) : (
                     refundedBills.map((bill) => (
-                      <TableRow key={bill.bill_id}>
-                        <TableCell className="font-medium">#{bill.bill_id}</TableCell>
-                        <TableCell>{formatDate(bill.original_date)}</TableCell>
+                      <TableRow key={bill.id}>
+                        <TableCell className="font-medium">#{bill.id}</TableCell>
+                        <TableCell>{formatDate(bill.created_at)}</TableCell>
                         <TableCell>{formatDate(bill.refunded_at)}</TableCell>
-                        <TableCell>{bill.creditor_name}</TableCell>
-                        <TableCell>{bill.creditor_mobile}</TableCell>
+                        <TableCell>{bill.creditor_id?.name}</TableCell>
+                        <TableCell>{bill.creditor_id?.mobile || '-'}</TableCell>
                         <TableCell className="text-destructive">
-                          -₹{parseFloat(bill.refund_amount.toString()).toFixed(2)}
+                          -₹{Number(bill.refunded_amount || bill.total || 0).toFixed(2)}
                         </TableCell>
-                        <TableCell>{bill.refunded_by}</TableCell>
+                        <TableCell>{bill.refunded_by?.username || '-'}</TableCell>
                       </TableRow>
                     ))
                   )}

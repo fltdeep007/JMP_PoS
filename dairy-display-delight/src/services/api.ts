@@ -199,4 +199,33 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify(data),
     }),
+
+  previewRefund: (refundId: string) =>
+    handleFetch(`${API_URL}/api/receipts/${refundId}/preview`, {
+      headers: getAuthHeaders(),
+    }),
+
+  downloadRefund: async (refundId: string) => {
+    const token = localStorage.getItem('pos_token');
+    const response = await fetch(`${API_URL}/api/refunds/${refundId}/download`, {
+      headers: { 'Authorization': token ? `Bearer ${token}` : '' },
+    });
+    if (!response.ok) throw new Error('Failed to download refund receipt');
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `refund-${refundId}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  },
+
+  printRefund: (refundId: string) =>
+    handleFetch(`${API_URL}/api/refunds/${refundId}/print`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    }),
 };
+
