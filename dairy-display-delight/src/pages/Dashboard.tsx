@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import POSLayout from '@/components/POSLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Users, Receipt, Package, TrendingUp } from 'lucide-react';
@@ -40,6 +41,18 @@ const Dashboard = () => {
       await fetchWhatsAppStatus();
     } catch (err) {
       console.error('Failed to disconnect WhatsApp:', err);
+    } finally {
+      setLoadingWa(false);
+    }
+  };
+
+  const handleConnect = async () => {
+    setLoadingWa(true);
+    try {
+      await api.connectWhatsApp();
+      await fetchWhatsAppStatus();
+    } catch (err) {
+      console.error('Failed to start WhatsApp connection:', err);
     } finally {
       setLoadingWa(false);
     }
@@ -129,18 +142,18 @@ const Dashboard = () => {
               <CardTitle>Quick Actions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              <a href="/billing" className="block rounded-lg border p-4 hover:bg-muted">
+              <Link to="/billing" className="block rounded-lg border p-4 hover:bg-muted">
                 <h3 className="font-semibold">Create New Bill</h3>
                 <p className="text-sm text-muted-foreground">Start billing for creditors</p>
-              </a>
-              <a href="/creditors" className="block rounded-lg border p-4 hover:bg-muted">
+              </Link>
+              <Link to="/creditors" className="block rounded-lg border p-4 hover:bg-muted">
                 <h3 className="font-semibold">Manage Creditors</h3>
                 <p className="text-sm text-muted-foreground">Add or update creditor accounts</p>
-              </a>
-              <a href="/items" className="block rounded-lg border p-4 hover:bg-muted">
+              </Link>
+              <Link to="/items" className="block rounded-lg border p-4 hover:bg-muted">
                 <h3 className="font-semibold">Manage Items</h3>
                 <p className="text-sm text-muted-foreground">Update product prices and details</p>
-              </a>
+              </Link>
             </CardContent>
           </Card>
 
@@ -243,15 +256,11 @@ const Dashboard = () => {
                     WhatsApp is currently disconnected. Creditors will not receive transaction receipts or weekly alerts.
                   </p>
                   <button
-                    onClick={async () => {
-                      // Trigger re-initialization call
-                      try {
-                        await api.getWhatsAppStatus();
-                      } catch (e) {}
-                    }}
-                    className="px-5 py-2.5 bg-primary text-primary-foreground font-semibold rounded-lg shadow hover:bg-primary/90 transition"
+                    onClick={handleConnect}
+                    disabled={loadingWa}
+                    className="px-5 py-2.5 bg-primary text-primary-foreground font-semibold rounded-lg shadow hover:bg-primary/90 transition disabled:opacity-50"
                   >
-                    Start Connection
+                    {loadingWa ? 'Connecting...' : 'Start Connection'}
                   </button>
                 </div>
               )}

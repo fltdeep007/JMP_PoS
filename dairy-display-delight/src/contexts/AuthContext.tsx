@@ -17,19 +17,18 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    const storedToken = localStorage.getItem('pos_token');
+  const [user, setUser] = useState<User | null>(() => {
     const storedUser = localStorage.getItem('pos_user');
-    
-    if (storedToken && storedUser) {
-      setToken(storedToken);
-      setUser(JSON.parse(storedUser));
+    try {
+      return storedUser ? JSON.parse(storedUser) : null;
+    } catch {
+      return null;
     }
-  }, []);
+  });
+  const [token, setToken] = useState<string | null>(() => {
+    return localStorage.getItem('pos_token');
+  });
+  const navigate = useNavigate();
 
   const login = async (username: string, password: string) => {
     const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
