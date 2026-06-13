@@ -10,12 +10,16 @@ const getAuthHeaders = () => {
 
 // 🔧 Helper to safely parse JSON (avoids "undefined is not valid JSON")
 const safeJson = async (response: Response) => {
+  const text = await response.text();
   try {
-    const text = await response.text();
     return text ? JSON.parse(text) : {};
   } catch (err) {
     console.error('❌ JSON parse failed:', err);
-    throw new Error('"undefined" is not valid JSON');
+    const trimmed = text.trim();
+    if (trimmed.startsWith('<') || trimmed.includes('Cannot DELETE') || trimmed.includes('Cannot POST') || trimmed.includes('Cannot GET')) {
+      throw new Error(`Server returned non-JSON response. Please verify the backend server has been restarted.`);
+    }
+    throw new Error('Invalid response format from server');
   }
 };
 
