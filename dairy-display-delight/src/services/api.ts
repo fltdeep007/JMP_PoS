@@ -57,6 +57,12 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  deleteCreditor: (id: string) =>
+    handleFetch(`${API_URL}/api/creditors/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    }),
+
   getCreditorAudit: (id: number) =>
     handleFetch(`${API_URL}/api/creditors/${id}/audit`, {
       headers: getAuthHeaders(),

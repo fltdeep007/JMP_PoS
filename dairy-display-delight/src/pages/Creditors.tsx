@@ -10,7 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { api } from '@/services/api';
-import { Plus, Edit, Wallet, Calendar } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { Plus, Edit, Wallet, Calendar, Trash2 } from 'lucide-react';
 
 const Creditors = () => {
   const [creditors, setCreditors] = useState<any[]>([]);
@@ -19,6 +20,7 @@ const Creditors = () => {
   const [showBalanceDialog, setShowBalanceDialog] = useState(false);
   const [balanceAmount, setBalanceAmount] = useState('');
   const [sendingReminder, setSendingReminder] = useState<string | null>(null);
+  const { user } = useAuth();
   
   // ✅ Utility function to get today's date in IST (YYYY-MM-DD)
 const getTodayIST = (): string => {
@@ -82,6 +84,24 @@ const [endDate, setEndDate] = useState(getTodayIST());
       });
     } finally {
       setSendingReminder(null);
+    }
+  };
+
+  const handleDeleteCreditor = async (creditorId: string, name: string) => {
+    if (!confirm(`Are you sure you want to delete creditor "${name}"?`)) return;
+    try {
+      await api.deleteCreditor(creditorId);
+      toast({
+        title: 'Success',
+        description: `Creditor "${name}" deleted successfully.`,
+      });
+      loadCreditors();
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to delete creditor',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -342,6 +362,16 @@ const [endDate, setEndDate] = useState(getTodayIST());
                           <Button variant="outline" size="sm" onClick={() => openBalanceDialog(creditor)}>
                             <Wallet className="h-4 w-4" />
                           </Button>
+                          {user?.username === 'admin' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDeleteCreditor(creditor.id, creditor.name)}
+                              className="bg-red-600/10 hover:bg-red-600/20 text-red-700 dark:text-red-400 border-red-500/20 hover:border-red-500/30"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
                           {creditor.balance > 0 && (
                             <Button 
                               variant="outline" 

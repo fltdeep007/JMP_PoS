@@ -284,6 +284,37 @@ app.put('/api/creditors/:id', authMiddleware, async (req, res) => {
   }
 });
 
+app.delete('/api/creditors/:id', authMiddleware, async (req, res) => {
+  try {
+    if (req.user.username !== 'admin') {
+      return res.status(403).json({ error: 'Access denied. Admin role required.' });
+    }
+
+    const creditor = await Creditor.findByIdAndUpdate(
+      req.params.id,
+      { is_active: false },
+      { new: true }
+    );
+
+    if (!creditor) return res.status(404).json({ error: 'Creditor not found' });
+
+    await CreditorAudit.create({
+      creditor_id: creditor._id,
+      action: 'DELETED',
+      old_balance: creditor.balance,
+      new_balance: creditor.balance,
+      amount_changed: 0,
+      notes: 'Creditor soft-deleted',
+      changed_by: req.user.id,
+    });
+
+    res.json({ message: 'Creditor deleted successfully.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 app.put('/api/creditors/:id/update-balance', authMiddleware, async (req, res) => {
   const session = await mongoose.startSession();
   try {
