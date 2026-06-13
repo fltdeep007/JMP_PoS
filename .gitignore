@@ -72,3 +72,7 @@ Icon?
 *~
 *.swp
 *.swo
+
+# WhatsApp Web session and cache
+.wwebjs_auth/
+.wwebjs_cache/

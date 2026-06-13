@@ -1,4 +1,5 @@
-import { Phone } from "lucide-react";
+import { Phone, Lock } from "lucide-react";
+import { Link } from "react-router-dom";
 import jmpLogo from "@/assets/jmp-logo.png";
 
 const Header = () => {
@@ -21,13 +22,23 @@ const Header = () => {
           </a>
         </nav>
 
-        <a
-          href="tel:+916375526458"
-          className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-        >
-          <Phone className="h-4 w-4" />
-          <span className="hidden sm:inline">Call Us</span>
-        </a>
+        <div className="flex items-center gap-3">
+          <Link
+            to="/login"
+            className="flex items-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors sm:px-4"
+          >
+            <Lock className="h-4 w-4" />
+            <span className="hidden sm:inline">Admin Login</span>
+          </Link>
+
+          <a
+            href="tel:+916375526458"
+            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            <Phone className="h-4 w-4" />
+            <span className="hidden sm:inline">Call Us</span>
+          </a>
+        </div>
       </div>
     </header>
   );
