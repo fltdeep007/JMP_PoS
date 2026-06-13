@@ -62,11 +62,8 @@ function initializeClient() {
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--no-first-run',
-      '--no-zygote',
-      '--single-process',
-      '--disable-gpu'
+      '--disable-gpu',
+      '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
     ]
   };
 
@@ -78,6 +75,10 @@ function initializeClient() {
     authStrategy: new LocalAuth({
       dataPath: path.join(__dirname, '.wwebjs_auth')
     }),
+    webVersionCache: {
+      type: 'remote',
+      remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
+    },
     puppeteer: puppeteerConfig
   });
 
@@ -213,9 +214,30 @@ async function sendPdfReceipt(mobile, pdfBuffer, fileName, caption) {
   }
 }
 
+/**
+ * Safe connection start/reconnect
+ */
+async function connect() {
+  if (client) {
+    if (connectionStatus === 'CONNECTED' || connectionStatus === 'CONNECTING' || connectionStatus === 'QR_READY') {
+      console.log('ℹ️ WhatsApp client is already active or connecting. Current status:', connectionStatus);
+      return;
+    }
+    try {
+      console.log('🔄 Cleaning up previous disconnected client...');
+      await client.destroy();
+    } catch (err) {
+      console.error('Failed to destroy client:', err);
+    }
+    client = null;
+  }
+  initializeClient();
+}
+
 module.exports = {
   initializeClient,
   getStatus,
+  connect,
   disconnect,
   sendTextMessage,
   sendPdfReceipt
