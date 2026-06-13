@@ -328,7 +328,10 @@ app.get('/api/creditors/:id/receipts', authMiddleware, async (req, res) => {
         filter.created_at.$lte = end;
       }
     }
-    const bills = await Bill.find(filter).populate('creditor_id', 'name').sort({ created_at: -1 });
+    const bills = await Bill.find(filter)
+      .populate('creditor_id', 'name')
+      .populate('created_by', 'username')
+      .sort({ created_at: -1 });
     res.json(bills.map(toId));
   } catch (err) {
     console.error(err);
@@ -824,6 +827,15 @@ app.get('/api/reports/credit', authMiddleware, async (req, res) => {
 // ─── WhatsApp Integration API Endpoints ─────────────────────────────────────────
 app.get('/api/whatsapp/status', authMiddleware, (req, res) => {
   try {
+    res.json(whatsappService.getStatus());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/whatsapp/connect', authMiddleware, async (req, res) => {
+  try {
+    await whatsappService.connect();
     res.json(whatsappService.getStatus());
   } catch (err) {
     res.status(500).json({ error: err.message });

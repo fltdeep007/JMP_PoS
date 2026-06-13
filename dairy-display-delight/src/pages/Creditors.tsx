@@ -424,8 +424,8 @@ const [endDate, setEndDate] = useState(getTodayIST());
                           <TableCell className="font-medium">{log.action}</TableCell>
                           <TableCell>₹{parseFloat(log.old_balance || 0).toFixed(2)}</TableCell>
                           <TableCell>₹{parseFloat(log.new_balance || 0).toFixed(2)}</TableCell>
-                          <TableCell>{log.remarks || '-'}</TableCell>
-                          <TableCell>{log.changed_by}</TableCell>
+                          <TableCell>{log.notes || '-'}</TableCell>
+                          <TableCell>{log.changed_by?.username || 'System'}</TableCell>
                           <TableCell>{new Date(log.changed_at).toLocaleString()}</TableCell>
                         </TableRow>
                       ))}
@@ -461,18 +461,18 @@ const [endDate, setEndDate] = useState(getTodayIST());
 
                   <div className="space-y-4">
                     {receipts.map((receipt) => (
-                      <Card key={receipt.bill_id}>
+                      <Card key={receipt.id}>
                         <CardHeader>
                           <div className="flex justify-between items-start">
                             <div>
-                              <CardTitle className="text-lg">Bill #{receipt.bill_id}</CardTitle>
+                              <CardTitle className="text-lg">Bill #{receipt.id}</CardTitle>
                               <p className="text-sm text-muted-foreground">
                                 {new Date(receipt.created_at).toLocaleString()}
                               </p>
                             </div>
                             <div className="text-right">
                               <p className="text-2xl font-bold">₹{parseFloat(receipt.total).toFixed(2)}</p>
-                              {receipt.refunded === 1 && (
+                              {receipt.refunded && (
                                 <span className="text-xs text-destructive">Refunded</span>
                               )}
                             </div>
@@ -489,7 +489,7 @@ const [endDate, setEndDate] = useState(getTodayIST());
                               </TableRow>
                             </TableHeader>
                             <TableBody>
-                              {receipt.items.map((item: any, idx: number) => (
+                              {receipt.items?.map((item: any, idx: number) => (
                                 <TableRow key={idx}>
                                   <TableCell>{item.item_name}</TableCell>
                                   <TableCell>{item.quantity}</TableCell>
@@ -500,7 +500,7 @@ const [endDate, setEndDate] = useState(getTodayIST());
                             </TableBody>
                           </Table>
                           <p className="text-xs text-muted-foreground mt-2">
-                            Created by: {receipt.created_by}
+                            Created by: {receipt.created_by?.username || 'System'}
                           </p>
                         </CardContent>
                       </Card>
