@@ -5,6 +5,8 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 const PDFDocument = require('pdfkit');
+const cron = require('node-cron');
+const whatsappService = require('./whatsappService');
 
 const app = express();
 app.use(cors());
@@ -124,6 +126,75 @@ const billToJson = (doc) => {
   const obj = toId(doc);
   if (Array.isArray(obj.items)) obj.items = obj.items.map(normalizeItem);
   return obj;
+};
+
+// Helper: Generate PDF Buffer for a Bill
+const generateBillPdfBuffer = (bill) => {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ margin: 50 });
+      const buffers = [];
+      doc.on('data', buffers.push.bind(buffers));
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
+      doc.on('error', reject);
+
+      doc.fontSize(20).text('Receipt', { align: 'center' });
+      doc.moveDown();
+      doc.fontSize(12).text(`Bill ID: ${bill._id}`);
+      doc.text(`Date: ${new Date(bill.created_at).toLocaleString('en-IN')}`);
+      doc.text(`Creditor: ${bill.creditor_id?.name || 'N/A'}`);
+      doc.text(`Mobile: ${bill.creditor_id?.mobile || 'N/A'}`);
+      doc.moveDown();
+      doc.text('Items:', { underline: true });
+      bill.items.forEach((item) => {
+        const name     = item.item_name || item.name     || 'Unknown';
+        const qty      = item.quantity  ?? item.qty      ?? 0;
+        const price    = item.price     ?? 0;
+        const subtotal = item.subtotal  ?? (qty * price);
+        doc.text(`  ${name} x${qty}  @ ₹${price}  = ₹${subtotal}`);
+      });
+      doc.moveDown();
+      doc.fontSize(14).text(`Total: ₹${bill.total}`, { bold: true });
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+};
+
+// Helper: Generate PDF Buffer for a Refund
+const generateRefundPdfBuffer = (bill) => {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ margin: 50 });
+      const buffers = [];
+      doc.on('data', buffers.push.bind(buffers));
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
+      doc.on('error', reject);
+
+      doc.fontSize(20).text('REFUND RECEIPT', { align: 'center' });
+      doc.moveDown(0.5);
+      doc.fontSize(12).text(`Refund ID : ${bill._id}`);
+      doc.text(`Date      : ${new Date(bill.created_at).toLocaleString('en-IN')}`);
+      doc.text(`Creditor  : ${bill.creditor_id?.name || 'N/A'}`);
+      doc.text(`Mobile    : ${bill.creditor_id?.mobile || 'N/A'}`);
+      doc.text(`Processed by: ${bill.created_by?.username || 'N/A'}`);
+      doc.moveDown();
+      doc.text('Refunded Items:', { underline: true });
+      bill.items.forEach((item) => {
+        const name     = item.item_name || item.name     || 'Unknown';
+        const qty      = item.quantity  ?? item.qty      ?? 0;
+        const price    = item.price     ?? 0;
+        const subtotal = item.subtotal  ?? (qty * price);
+        doc.text(`  ${name}  ${qty} x ₹${price}  =  −₹${subtotal}`);
+      });
+      doc.moveDown();
+      doc.fontSize(14).text(`TOTAL REFUNDED: −₹${bill.total}`, { bold: true });
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
 };
 
 // ─── Auth Routes ─────────────────────────────────────────────────────────────
@@ -363,7 +434,26 @@ app.post('/api/bills', authMiddleware, async (req, res) => {
       }], { session });
     });
 
-    const bill = await Bill.findById(billId).populate('creditor_id', 'name').populate('created_by', 'username');
+    const bill = await Bill.findById(billId).populate('creditor_id', 'name mobile').populate('created_by', 'username');
+    
+    // Asynchronously send WhatsApp notification
+    if (bill && bill.creditor_id && bill.creditor_id.mobile) {
+      (async () => {
+        try {
+          const pdfBuffer = await generateBillPdfBuffer(bill);
+          const caption = `Hello *${bill.creditor_id.name}*, here is your receipt for your purchase today at Dairy Display Delight. Total bill amount: *₹${bill.total}*.`;
+          await whatsappService.sendPdfReceipt(
+            bill.creditor_id.mobile,
+            pdfBuffer,
+            `receipt-${bill._id}.pdf`,
+            caption
+          );
+        } catch (werr) {
+          console.error('⚠️ Auto WhatsApp receipt notification failed:', werr.message);
+        }
+      })();
+    }
+
     res.status(201).json({ ...billToJson(bill), id: billId });
   } catch (err) {
     console.error(err);
@@ -460,9 +550,28 @@ app.put('/api/bills/:id/refund', authMiddleware, async (req, res) => {
     });
 
     const updated = await Bill.findById(req.params.id)
-      .populate('creditor_id', 'name')
+      .populate('creditor_id', 'name mobile')
       .populate('created_by', 'username')
       .populate('refunded_by', 'username');
+    
+    // Asynchronously send WhatsApp refund notification
+    if (updated && updated.creditor_id && updated.creditor_id.mobile) {
+      (async () => {
+        try {
+          const pdfBuffer = await generateRefundPdfBuffer(updated);
+          const caption = `Hello *${updated.creditor_id.name}*, here is your refund receipt from Dairy Display Delight. Total refund amount: *₹${updated.total}*.`;
+          await whatsappService.sendPdfReceipt(
+            updated.creditor_id.mobile,
+            pdfBuffer,
+            `refund-${updated._id}.pdf`,
+            caption
+          );
+        } catch (werr) {
+          console.error('⚠️ Auto WhatsApp refund notification failed:', werr.message);
+        }
+      })();
+    }
+
     res.json(billToJson(updated));
   } catch (err) {
     console.error(err);
@@ -513,8 +622,27 @@ app.post('/api/refunds', authMiddleware, async (req, res) => {
     });
 
     const refundBill = await Bill.findById(refundBillId)
-      .populate('creditor_id', 'name')
+      .populate('creditor_id', 'name mobile')
       .populate('created_by', 'username');
+    
+    // Asynchronously send WhatsApp refund notification
+    if (refundBill && refundBill.creditor_id && refundBill.creditor_id.mobile) {
+      (async () => {
+        try {
+          const pdfBuffer = await generateRefundPdfBuffer(refundBill);
+          const caption = `Hello *${refundBill.creditor_id.name}*, here is your refund receipt from Dairy Display Delight. Total refund amount: *₹${refundBill.total}*.`;
+          await whatsappService.sendPdfReceipt(
+            refundBill.creditor_id.mobile,
+            pdfBuffer,
+            `refund-${refundBill._id}.pdf`,
+            caption
+          );
+        } catch (werr) {
+          console.error('⚠️ Auto WhatsApp refund notification failed:', werr.message);
+        }
+      })();
+    }
+
     res.status(201).json(billToJson(refundBill));
   } catch (err) {
     console.error(err);
@@ -562,29 +690,10 @@ app.get('/api/receipts/:billId/download', authMiddleware, async (req, res) => {
       .populate('created_by', 'username');
     if (!bill) return res.status(404).json({ error: 'Bill not found' });
 
-    const doc = new PDFDocument({ margin: 50 });
+    const pdfBuffer = await generateBillPdfBuffer(bill);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=receipt-${bill._id}.pdf`);
-    doc.pipe(res);
-
-    doc.fontSize(20).text('Receipt', { align: 'center' });
-    doc.moveDown();
-    doc.fontSize(12).text(`Bill ID: ${bill._id}`);
-    doc.text(`Date: ${new Date(bill.created_at).toLocaleString()}`);
-    doc.text(`Creditor: ${bill.creditor_id?.name || 'N/A'}`);
-    doc.moveDown();
-    doc.text('Items:', { underline: true });
-    bill.items.forEach((item) => {
-      const name     = item.item_name || item.name     || 'Unknown';
-      const qty      = item.quantity  ?? item.qty      ?? 0;
-      const price    = item.price     ?? 0;
-      const subtotal = item.subtotal  ?? (qty * price);
-      doc.text(`  ${name} x${qty}  @ ₹${price}  = ₹${subtotal}`);
-    });
-    doc.moveDown();
-    doc.fontSize(14).text(`Total: ${bill.total}`, { bold: true });
-
-    doc.end();
+    res.send(pdfBuffer);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -663,30 +772,10 @@ app.get('/api/refunds/:id/download', authMiddleware, async (req, res) => {
       .populate('created_by', 'username');
     if (!bill) return res.status(404).json({ error: 'Refund not found' });
 
-    const doc = new PDFDocument({ margin: 50 });
+    const pdfBuffer = await generateRefundPdfBuffer(bill);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=refund-${bill._id}.pdf`);
-    doc.pipe(res);
-
-    doc.fontSize(20).text('REFUND RECEIPT', { align: 'center' });
-    doc.moveDown(0.5);
-    doc.fontSize(12).text(`Refund ID : ${bill._id}`);
-    doc.text(`Date      : ${new Date(bill.created_at).toLocaleString('en-IN')}`);
-    doc.text(`Creditor  : ${bill.creditor_id?.name || 'N/A'}`);
-    doc.text(`Mobile    : ${bill.creditor_id?.mobile || 'N/A'}`);
-    doc.text(`Processed by: ${bill.created_by?.username || 'N/A'}`);
-    doc.moveDown();
-    doc.text('Refunded Items:', { underline: true });
-    bill.items.forEach((item) => {
-      const name     = item.item_name || item.name     || 'Unknown';
-      const qty      = item.quantity  ?? item.qty      ?? 0;
-      const price    = item.price     ?? 0;
-      const subtotal = item.subtotal  ?? (qty * price);
-      doc.text(`  ${name}  ${qty} x ₹${price}  =  −₹${subtotal}`);
-    });
-    doc.moveDown();
-    doc.fontSize(14).text(`TOTAL REFUNDED: −₹${bill.total}`, { bold: true });
-    doc.end();
+    res.send(pdfBuffer);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -732,6 +821,116 @@ app.get('/api/reports/credit', authMiddleware, async (req, res) => {
   }
 });
 
-// ─── Start Server ─────────────────────────────────────────────────────────────
+// ─── WhatsApp Integration API Endpoints ─────────────────────────────────────────
+app.get('/api/whatsapp/status', authMiddleware, (req, res) => {
+  try {
+    res.json(whatsappService.getStatus());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/whatsapp/disconnect', authMiddleware, async (req, res) => {
+  try {
+    await whatsappService.disconnect();
+    res.json({ message: 'Disconnected WhatsApp successfully.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/bills/:id/send-whatsapp', authMiddleware, async (req, res) => {
+  try {
+    const bill = await Bill.findById(req.params.id)
+      .populate('creditor_id', 'name mobile')
+      .populate('created_by', 'username');
+    if (!bill) return res.status(404).json({ error: 'Bill not found' });
+    if (!bill.creditor_id || !bill.creditor_id.mobile) {
+      return res.status(400).json({ error: 'Creditor has no mobile number registered.' });
+    }
+
+    const pdfBuffer = await generateBillPdfBuffer(bill);
+    const caption = `Hello *${bill.creditor_id.name}*, here is your receipt for your purchase today at Dairy Display Delight. Total bill amount: *₹${bill.total}*.`;
+    
+    await whatsappService.sendPdfReceipt(
+      bill.creditor_id.mobile,
+      pdfBuffer,
+      `receipt-${bill._id}.pdf`,
+      caption
+    );
+
+    res.json({ message: 'Receipt sent successfully via WhatsApp.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/creditors/:id/send-reminder', authMiddleware, async (req, res) => {
+  try {
+    const creditor = await Creditor.findById(req.params.id);
+    if (!creditor) return res.status(404).json({ error: 'Creditor not found' });
+    if (!creditor.mobile) {
+      return res.status(400).json({ error: 'Creditor has no mobile number registered.' });
+    }
+
+    const outstandingAmount = Math.abs(creditor.balance);
+    const text = `Hello *${creditor.name}*, this is a reminder of your current outstanding balance at Dairy Display Delight. Outstanding Amount: *₹${outstandingAmount}*. Please clear your dues at your earliest convenience. Thank you!`;
+    
+    await whatsappService.sendTextMessage(creditor.mobile, text);
+    
+    // Log manual reminder in audits
+    await CreditorAudit.create({
+      creditor_id: creditor._id,
+      action: 'REMINDER',
+      old_balance: creditor.balance,
+      new_balance: creditor.balance,
+      amount_changed: 0,
+      notes: 'Manual WhatsApp reminder sent',
+      changed_by: req.user.id,
+    });
+
+    res.json({ message: 'Outstanding balance reminder sent successfully.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Weekly Automated Cron Reminders ───────────────────────────────────────────
+// Run every Sunday at 6 PM (18:00)
+cron.schedule('0 18 * * 0', async () => {
+  console.log('⏰ Starting weekly WhatsApp outstanding due reminders cron job...');
+  try {
+    const creditors = await Creditor.find({ is_active: true, balance: { $lt: 0 } });
+    console.log(`Found ${creditors.length} creditors with outstanding balance.`);
+    for (const creditor of creditors) {
+      if (creditor.mobile) {
+        const outstandingAmount = Math.abs(creditor.balance);
+        const text = `Hello *${creditor.name}*, this is a weekly reminder of your current outstanding balance at Dairy Display Delight. Outstanding Amount: *₹${outstandingAmount}*. Please clear your dues at your earliest convenience. Thank you!`;
+        try {
+          await whatsappService.sendTextMessage(creditor.mobile, text);
+          await CreditorAudit.create({
+            creditor_id: creditor._id,
+            action: 'REMINDER',
+            old_balance: creditor.balance,
+            new_balance: creditor.balance,
+            amount_changed: 0,
+            notes: 'Weekly automated WhatsApp reminder sent',
+          });
+        } catch (err) {
+          console.error(`⚠️ Failed to send weekly reminder to ${creditor.name} (${creditor.mobile}):`, err.message);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('❌ Weekly reminder cron job failed:', err);
+  }
+});
+
+// ─── Start Server & Initialize WhatsApp ─────────────────────────────────────────
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`POS Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`POS Server running on port ${PORT}`);
+  whatsappService.initializeClient();
+});

@@ -192,6 +192,28 @@ export const api = {
       headers: getAuthHeaders(),
     }),
 
+  // 🔸 WhatsApp Integration Endpoints
+  getWhatsAppStatus: () =>
+    handleFetch(`${API_URL}/api/whatsapp/status`, { headers: getAuthHeaders() }),
+
+  disconnectWhatsApp: () =>
+    handleFetch(`${API_URL}/api/whatsapp/disconnect`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    }),
+
+  sendWhatsAppReceipt: (billId: string) =>
+    handleFetch(`${API_URL}/api/bills/${billId}/send-whatsapp`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    }),
+
+  sendWhatsAppReminder: (creditorId: string) =>
+    handleFetch(`${API_URL}/api/creditors/${creditorId}/send-reminder`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    }),
+
   // 🔸 Refunds
   createRefund: (data: any) =>
     handleFetch(`${API_URL}/api/refunds`, {

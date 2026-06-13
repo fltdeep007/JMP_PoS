@@ -18,6 +18,7 @@ const Creditors = () => {
   const [showForm, setShowForm] = useState(false);
   const [showBalanceDialog, setShowBalanceDialog] = useState(false);
   const [balanceAmount, setBalanceAmount] = useState('');
+  const [sendingReminder, setSendingReminder] = useState<string | null>(null);
   
   // ✅ Utility function to get today's date in IST (YYYY-MM-DD)
 const getTodayIST = (): string => {
@@ -62,6 +63,25 @@ const [endDate, setEndDate] = useState(getTodayIST());
         description: 'Failed to load creditors',
         variant: 'destructive',
       });
+    }
+  };
+
+  const handleSendReminder = async (creditor: any) => {
+    setSendingReminder(creditor.id);
+    try {
+      await api.sendWhatsAppReminder(creditor.id);
+      toast({
+        title: 'Success',
+        description: `Outstanding balance reminder sent to ${creditor.name} via WhatsApp.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to send WhatsApp reminder',
+        variant: 'destructive',
+      });
+    } finally {
+      setSendingReminder(null);
     }
   };
 
@@ -322,6 +342,17 @@ const [endDate, setEndDate] = useState(getTodayIST());
                           <Button variant="outline" size="sm" onClick={() => openBalanceDialog(creditor)}>
                             <Wallet className="h-4 w-4" />
                           </Button>
+                          {creditor.balance < 0 && (
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={() => handleSendReminder(creditor)}
+                              disabled={sendingReminder === creditor.id || !creditor.mobile}
+                              className="bg-green-600/10 hover:bg-green-600/20 text-green-700 dark:text-green-400 border-green-500/20 hover:border-green-500/30"
+                            >
+                              {sendingReminder === creditor.id ? 'Sending...' : 'Remind'}
+                            </Button>
+                          )}
                           <Button variant="outline" size="sm" onClick={() => viewCreditorDetails(creditor)}>
                             View Details
                           </Button>

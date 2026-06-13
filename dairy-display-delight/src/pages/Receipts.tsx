@@ -25,6 +25,7 @@ const Receipts = () => {
   const [refundedBills, setRefundedBills] = useState<Bill[]>([]);
   const [loading, setLoading] = useState(true);
   const [refunding, setRefunding] = useState<string | null>(null);
+  const [sendingWa, setSendingWa] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -68,6 +69,25 @@ const Receipts = () => {
       });
     } finally {
       setRefunding(null);
+    }
+  };
+
+  const handleSendWhatsApp = async (billId: string) => {
+    setSendingWa(billId);
+    try {
+      await api.sendWhatsAppReceipt(billId);
+      toast({
+        title: 'Success',
+        description: 'Receipt sent successfully via WhatsApp',
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to send WhatsApp receipt',
+        variant: 'destructive',
+      });
+    } finally {
+      setSendingWa(null);
     }
   };
 
@@ -141,7 +161,20 @@ const Receipts = () => {
                         <TableCell>{bill.creditor_id?.mobile || '-'}</TableCell>
                         <TableCell>₹{Number(bill.total || 0).toFixed(2)}</TableCell>
                         <TableCell>{bill.created_by?.username}</TableCell>
-                        <TableCell>
+                        <TableCell className="space-x-2">
+                          <Button
+                            onClick={() => handleSendWhatsApp(bill.id)}
+                            disabled={sendingWa === bill.id || !bill.creditor_id?.mobile}
+                            variant="outline"
+                            size="sm"
+                            className="bg-green-600/10 hover:bg-green-600/20 text-green-700 dark:text-green-400 border-green-500/20 hover:border-green-500/30"
+                          >
+                            {sendingWa === bill.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              'WhatsApp'
+                            )}
+                          </Button>
                           <Button
                             onClick={() => handleRefund(bill.id)}
                             disabled={refunding === bill.id}

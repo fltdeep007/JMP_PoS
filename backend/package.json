@@ -1,0 +1,22 @@
+{
+  "name": "pos-backend",
+  "version": "1.0.0",
+  "description": "POS Server with WhatsApp Multi-device Integration",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node seed.js"
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.3.1",
+    "node-cron": "^3.0.3",
+    "pdfkit": "^0.15.0",
+    "qrcode": "^1.5.3",
+    "whatsapp-web.js": "^1.26.0"
+  }
+}
