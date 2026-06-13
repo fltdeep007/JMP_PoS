@@ -196,6 +196,12 @@ export const api = {
   getWhatsAppStatus: () =>
     handleFetch(`${API_URL}/api/whatsapp/status`, { headers: getAuthHeaders() }),
 
+  connectWhatsApp: () =>
+    handleFetch(`${API_URL}/api/whatsapp/connect`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    }),
+
   disconnectWhatsApp: () =>
     handleFetch(`${API_URL}/api/whatsapp/disconnect`, {
       method: 'POST',
