@@ -342,7 +342,7 @@ const [endDate, setEndDate] = useState(getTodayIST());
                           <Button variant="outline" size="sm" onClick={() => openBalanceDialog(creditor)}>
                             <Wallet className="h-4 w-4" />
                           </Button>
-                          {creditor.balance < 0 && (
+                          {creditor.balance > 0 && (
                             <Button 
                               variant="outline" 
                               size="sm" 

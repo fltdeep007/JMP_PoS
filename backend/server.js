@@ -292,7 +292,7 @@ app.put('/api/creditors/:id/update-balance', authMiddleware, async (req, res) =>
       const creditor = await Creditor.findById(req.params.id).session(session);
       if (!creditor) throw new Error('Creditor not found');
       const old_balance = creditor.balance;
-      const new_balance = old_balance + Number(amount_deposited);
+      const new_balance = old_balance - Number(amount_deposited);
       creditor.balance = new_balance;
       await creditor.save({ session });
       await CreditorAudit.create([{
@@ -300,7 +300,7 @@ app.put('/api/creditors/:id/update-balance', authMiddleware, async (req, res) =>
         action: 'DEPOSIT',
         old_balance,
         new_balance,
-        amount_changed: Number(amount_deposited),
+        amount_changed: -Number(amount_deposited),
         notes: `Deposit of ${amount_deposited}`,
         changed_by: req.user.id,
       }], { session });
@@ -422,7 +422,7 @@ app.post('/api/bills', authMiddleware, async (req, res) => {
       billId = bill._id.toString();
 
       const old_balance = creditor.balance;
-      const new_balance = old_balance - Number(total);
+      const new_balance = old_balance + Number(total);
       creditor.balance = new_balance;
       await creditor.save({ session });
 
@@ -431,7 +431,7 @@ app.post('/api/bills', authMiddleware, async (req, res) => {
         action: 'SALE',
         old_balance,
         new_balance,
-        amount_changed: -Number(total),
+        amount_changed: Number(total),
         notes: `Bill #${billId}`,
         changed_by: req.user.id,
       }], { session });
@@ -537,7 +537,7 @@ app.put('/api/bills/:id/refund', authMiddleware, async (req, res) => {
 
       const creditor = await Creditor.findById(bill.creditor_id).session(session);
       const old_balance = creditor.balance;
-      const new_balance = old_balance + Number(bill.total);
+      const new_balance = old_balance - Number(bill.total);
       creditor.balance = new_balance;
       await creditor.save({ session });
 
@@ -546,7 +546,7 @@ app.put('/api/bills/:id/refund', authMiddleware, async (req, res) => {
         action: 'REFUND',
         old_balance,
         new_balance,
-        amount_changed: Number(bill.total),
+        amount_changed: -Number(bill.total),
         notes: `Refund for bill #${bill._id}`,
         changed_by: req.user.id,
       }], { session });
@@ -609,7 +609,7 @@ app.post('/api/refunds', authMiddleware, async (req, res) => {
       refundBillId = refundBill._id.toString();
 
       const old_balance = creditor.balance;
-      const new_balance = old_balance + Number(total);
+      const new_balance = old_balance - Number(total);
       creditor.balance = new_balance;
       await creditor.save({ session });
 
@@ -618,7 +618,7 @@ app.post('/api/refunds', authMiddleware, async (req, res) => {
         action: 'REFUND',
         old_balance,
         new_balance,
-        amount_changed: Number(total),
+        amount_changed: -Number(total),
         notes: `Refund bill #${refundBillId}`,
         changed_by: req.user.id,
       }], { session });
@@ -886,7 +886,7 @@ app.post('/api/creditors/:id/send-reminder', authMiddleware, async (req, res) =>
       return res.status(400).json({ error: 'Creditor has no mobile number registered.' });
     }
 
-    const outstandingAmount = Math.abs(creditor.balance);
+    const outstandingAmount = creditor.balance;
     const text = `Hello *${creditor.name}*, this is a reminder of your current outstanding balance at Dairy Display Delight. Outstanding Amount: *₹${outstandingAmount}*. Please clear your dues at your earliest convenience. Thank you!`;
     
     await whatsappService.sendTextMessage(creditor.mobile, text);
@@ -914,11 +914,11 @@ app.post('/api/creditors/:id/send-reminder', authMiddleware, async (req, res) =>
 cron.schedule('0 18 * * 0', async () => {
   console.log('⏰ Starting weekly WhatsApp outstanding due reminders cron job...');
   try {
-    const creditors = await Creditor.find({ is_active: true, balance: { $lt: 0 } });
+    const creditors = await Creditor.find({ is_active: true, balance: { $gt: 0 } });
     console.log(`Found ${creditors.length} creditors with outstanding balance.`);
     for (const creditor of creditors) {
       if (creditor.mobile) {
-        const outstandingAmount = Math.abs(creditor.balance);
+        const outstandingAmount = creditor.balance;
         const text = `Hello *${creditor.name}*, this is a weekly reminder of your current outstanding balance at Dairy Display Delight. Outstanding Amount: *₹${outstandingAmount}*. Please clear your dues at your earliest convenience. Thank you!`;
         try {
           await whatsappService.sendTextMessage(creditor.mobile, text);

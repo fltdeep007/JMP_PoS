@@ -426,9 +426,7 @@ const Billing = () => {
                     <span className="font-semibold">Mobile:</span> {selectedCreditor.mobile}
                   </p>
                   <p className="text-sm">
-                    <span className="font-semibold">Current Balance:</span> ₹
-                    ₹{Number(selectedCreditor.balance || 0).toFixed(2)}
-
+                    <span className="font-semibold">Current Balance:</span> ₹{Number(selectedCreditor.balance || 0).toFixed(2)}
                   </p>
                   <p className="text-sm">
                     <span className="font-semibold">Price Group:</span> {selectedCreditor.price_group}
